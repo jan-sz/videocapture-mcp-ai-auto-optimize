@@ -6,6 +6,8 @@
 
 Video Still Capture MCP is a Python implementation of the Model Context Protocol (MCP) that provides AI assistants with the ability to access and control webcams and video sources through OpenCV. This server exposes a set of tools that allow language models to capture images, manipulate camera settings, and manage video connections. There is no video capture.
 
+> **Origin:** This project builds on the open-source [videocapture-mcp](https://github.com/13rac1/videocapture-mcp) created by @13rac1, adding deterministic connection IDs, camera enumeration, and an auto-optimization pipeline for exploring UVC/DirectShow controls.
+
 ## Examples
 
 Here are some examples of the Video Still Capture  MCP server in action:
@@ -128,6 +130,54 @@ This will automatically configure Claude Desktop to use your videocapture MCP se
 
 Once integrated, Claude will be able to access your webcam or video source when requested. Simply ask Claude to take a photo or perform any webcam-related task.
 
+## Step-by-step setup and testing with Claude Desktop (Windows)
+
+1. **Install dependencies**
+   - Install [Python 3.10+](https://www.python.org/downloads/windows/).
+   - Open an elevated PowerShell and install the project plus runtime deps:
+     ```powershell
+     git clone https://github.com/jan-sz/videocapture-mcp-ai-auto-optimize.git
+     cd videocapture-mcp-ai-auto-optimize
+     python -m pip install --upgrade pip
+     python -m pip install -e .
+     ```
+     This pulls in the MCP SDK, OpenCV, and related libraries.
+
+2. **Register the MCP server with Claude Desktop**
+   - Edit `%AppData%\\Claude\\claude_desktop_config.json` and add:
+     ```json
+     {
+       "mcpServers": {
+         "VideoCapture": {
+           "command": "uv",
+           "args": [
+             "run",
+             "--with",
+             "mcp[cli]",
+             "--with",
+             "numpy",
+             "--with",
+             "opencv-python",
+             "mcp",
+             "run",
+             "C:\\ABSOLUTE_PATH\\videocapture-mcp-ai-auto-optimize\\videocapture_mcp.py"
+           ]
+         }
+       }
+     }
+     ```
+   - Replace `C:\\ABSOLUTE_PATH\\videocapture-mcp-ai-auto-optimize` with your actual checkout path.
+
+3. **Test the MCP tools from Claude Desktop**
+   - Restart Claude Desktop so it reloads the configuration.
+   - Ask Claude to enumerate cameras: “List available cameras.” (Calls `list_cameras` to return indices and names.)
+   - Ask Claude to open a specific device: “Open camera index 0.” (Calls `open_camera` and returns a deterministic ID like `camera_0_01`.)
+   - Capture an image: “Take a photo with the opened camera.” (Calls `capture_frame` using the returned ID.)
+   - Adjust a property: “Increase brightness on camera_0_01.” (Calls `set_video_property` with the same ID.)
+   - Close when done: “Close camera_0_01.” (Calls `close_connection`.)
+
+These steps keep the LLM deterministic: every tool response includes the `camera_<index>_<counter>` identifier that subsequent tool calls reuse, avoiding ambiguity between devices.
+
 ## Features
 
 - **Quick Image Capture**: Capture a single image from a webcam without managing connections
@@ -159,7 +209,10 @@ open_camera(device_index: int = 0, name: Optional[str] = None) -> str
 
 - **device_index**: Camera index (0 is usually the default webcam)
 - **name**: Optional name to identify this camera connection
-- **Returns**: Connection ID for the opened camera
+- **Returns**: Connection ID for the opened camera. If no name is provided,
+  IDs are generated deterministically as `camera_<index>_<counter>` so every
+  tool call uses the same format and there is no ambiguity between creators
+  and consumers of connection IDs.
 
 ### `capture_frame`
 
@@ -208,6 +261,17 @@ close_connection(connection_id: str) -> bool
 - **connection_id**: ID of the connection to close
 - **Returns**: True if successful
 
+### `list_cameras`
+
+Probe available cameras by index.
+
+```python
+list_cameras(max_devices: int = 10) -> list
+```
+
+- **max_devices**: Highest index (exclusive) to check; indices start at 0
+- **Returns**: A list of discovered cameras with their index, backend name, and reported resolution
+
 ### `list_active_connections`
 
 List all active video connections.
@@ -217,6 +281,10 @@ list_active_connections() -> list
 ```
 
 - **Returns**: List of active connection IDs
+
+### Camera selection and identification
+
+All capture tools expose a `device_index` parameter (default `0`) so you can explicitly choose which connected camera to use. When you call `open_camera(device_index=1)` you receive a deterministic connection ID (for example, `camera_1_01`); pass that ID to `capture_frame`, `set_video_property`, and other operations to ensure commands target the intended device. The helper `quick_capture` also accepts `device_index`, opening the specified camera temporarily and cleaning it up automatically while reusing any existing connection for that index.
 
 ## Example Usage
 
@@ -244,7 +312,11 @@ Here's how an AI assistant might use the Webcam MCP server:
 
 ### Resource Management
 
-The server automatically manages camera resources, ensuring all connections are properly released when the server shuts down. For long-running applications, it's good practice to explicitly close connections when they're no longer needed.
+The server automatically manages camera resources, ensuring all connections are properly released when the server shuts down. For long-running applications, it's good practice to explicitly close connections when they're no longer needed. In LLM workflows:
+
+- `quick_capture` opens and closes a camera automatically for one-off shots.
+- When you call `open_camera`, instruct the LLM to invoke `close_connection` on the returned `camera_<index>_<counter>` once captures and property tweaks are done. Pairing the open/close calls keeps USB devices free and prevents stale IDs from accumulating.
+- If the LLM loses track of IDs, call `list_active_connections` to see what remains open and close them explicitly.
 
 ### Multiple Cameras
 

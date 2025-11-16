@@ -2,17 +2,27 @@ import cv2
 from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Optional, Dict
 from mcp.server.fastmcp import FastMCP, Image
 
-# Store active video capture objects
-active_captures: Dict[str, cv2.VideoCapture] = {}
+
+@dataclass
+class ConnectionEntry:
+    """Track an open capture along with its originating device index."""
+
+    capture: cv2.VideoCapture
+    device_index: int
+
+
+# Store active video capture objects keyed by a deterministic connection ID
+active_captures: Dict[str, ConnectionEntry] = {}
+# Track counters per device index so generated IDs stay stable and non-ambiguous
+device_counters: Dict[int, int] = {}
 
 # Define our application context
 @dataclass
 class AppContext:
-    active_captures: Dict[str, cv2.VideoCapture]
+    active_captures: Dict[str, ConnectionEntry]
 
 @asynccontextmanager
 async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
@@ -26,8 +36,9 @@ async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
         # Cleanup on shutdown
         #print("Shutting down VideoCapture MCP Server")
         for connection_id, cap in active_captures.items():
-            cap.release()
+            cap.capture.release()
         active_captures.clear()
+        device_counters.clear()
 
 # Initialize the FastMCP server with lifespan
 mcp = FastMCP("VideoCapture", 
@@ -55,8 +66,8 @@ def quick_capture(device_index: int = 0, flip: bool = False) -> Image:
     """
     # Check if this device is already open
     device_key = None
-    for key, cap in active_captures.items():
-        if key.startswith(f"camera_{device_index}_"):
+    for key, entry in active_captures.items():
+        if entry.device_index == device_index:
             device_key = key
             break
     
@@ -88,13 +99,17 @@ def open_camera(device_index: int = 0, name: Optional[str] = None) -> str:
         Connection ID for the opened camera
     """
     if name is None:
-        name = f"camera_{device_index}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
-    
+        next_index = device_counters.get(device_index, 0) + 1
+        device_counters[device_index] = next_index
+        name = f"camera_{device_index}_{next_index:02d}"
+    elif name in active_captures:
+        raise ValueError(f"Connection name already in use: {name}")
+
     cap = cv2.VideoCapture(device_index)
     if not cap.isOpened():
         raise ValueError(f"Failed to open camera at index {device_index}")
-    
-    active_captures[name] = cap
+
+    active_captures[name] = ConnectionEntry(capture=cap, device_index=device_index)
     return name
 
 @mcp.tool()
@@ -112,7 +127,7 @@ def capture_frame(connection_id: str, flip: bool = False) -> Image:
     if connection_id not in active_captures:
         raise ValueError(f"No active connection with ID: {connection_id}")
     
-    cap = active_captures[connection_id]
+    cap = active_captures[connection_id].capture
     ret, frame = cap.read()
     
     if not ret:
@@ -143,7 +158,7 @@ def get_video_properties(connection_id: str) -> dict:
     if connection_id not in active_captures:
         raise ValueError(f"No active connection with ID: {connection_id}")
     
-    cap = active_captures[connection_id]
+    cap = active_captures[connection_id].capture
     
     properties = {
         "width": int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
@@ -174,7 +189,7 @@ def set_video_property(connection_id: str, property_name: str, value: float) -> 
     if connection_id not in active_captures:
         raise ValueError(f"No active connection with ID: {connection_id}")
     
-    cap = active_captures[connection_id]
+    cap = active_captures[connection_id].capture
     
     property_map = {
         "width": cv2.CAP_PROP_FRAME_WIDTH,
@@ -192,6 +207,60 @@ def set_video_property(connection_id: str, property_name: str, value: float) -> 
     
     return cap.set(property_map[property_name], value)
 
+
+@mcp.tool()
+def list_cameras(max_devices: int = 10) -> list:
+    """
+    Probe connected cameras by index and report which ones can be opened.
+
+    Args:
+        max_devices: Highest index (exclusive) to probe. The function checks
+            indices in the range [0, max_devices).
+
+    Returns:
+        A list of dictionaries describing each successfully opened camera.
+        Keys include:
+        - index: The probed numeric device index.
+        - backend: Backend name reported by OpenCV (if available).
+        - width/height: Current capture resolution reported by the driver.
+    """
+
+    def _backend_name(cap: cv2.VideoCapture) -> str:
+        try:
+            return cap.getBackendName()
+        except AttributeError:
+            return "unknown"
+
+    discovered = []
+    seen = set()
+
+    for index in range(max_devices):
+        cap = cv2.VideoCapture(index)
+        if not cap.isOpened():
+            cap.release()
+            continue
+
+        backend = _backend_name(cap)
+        key = (backend, index)
+        if key in seen:
+            cap.release()
+            continue
+
+        width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+        height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+        discovered.append(
+            {
+                "index": index,
+                "backend": backend,
+                "width": width,
+                "height": height,
+            }
+        )
+        seen.add(key)
+        cap.release()
+
+    return discovered
+
 @mcp.tool()
 def close_connection(connection_id: str) -> bool:
     """
@@ -206,7 +275,7 @@ def close_connection(connection_id: str) -> bool:
     if connection_id not in active_captures:
         raise ValueError(f"No active connection with ID: {connection_id}")
     
-    active_captures[connection_id].release()
+    active_captures[connection_id].capture.release()
     del active_captures[connection_id]
     return True
 
