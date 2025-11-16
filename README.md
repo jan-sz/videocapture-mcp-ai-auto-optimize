@@ -34,8 +34,8 @@ Left: Claude's view of the image | Right: Actual webcam capture
 ### Installation from source
 
 ```bash
-git clone https://github.com/13rac1/videocapture-mcp.git
-cd videocapture-mcp
+git clone https://github.com/jan-sz/videocapture-mcp-ai-auto-optimize.git
+cd videocapture-mcp-ai-auto-optimize
 pip install -e .
 ```
 
@@ -75,14 +75,14 @@ Add this MCP server configuration:
         "opencv-python",
         "mcp",
         "run",
-        "/ABSOLUTE_PATH/videocapture_mcp.py"
+        "/ABSOLUTE_PATH/videocapture-mcp-ai-auto-optimize/videocapture_mcp.py"
       ]
     }
   }
 }
 ```
 
-Ensure you replace `/ABSOLUTE_PATH/videocapture-mcp` with the project's absolute path.
+Ensure you replace `/ABSOLUTE_PATH/videocapture-mcp-ai-auto-optimize` with the project's absolute path.
 
 ### Windows
 
@@ -109,14 +109,14 @@ Add this MCP server configuration:
         "opencv-python",
         "mcp",
         "run",
-        "C:\ABSOLUTE_PATH\videocapture-mcp\videocapture_mcp.py"
+        "C:\ABSOLUTE_PATH\videocapture-mcp-ai-auto-optimize\videocapture_mcp.py"
       ]
     }
   }
 }
 ```
 
-Ensure you replace `C:\ABSOLUTE_PATH\videocapture-mcp` with the project's absolute path.
+Ensure you replace `C:\ABSOLUTE_PATH\videocapture-mcp-ai-auto-optimize` with the project's absolute path.
 
 ### Using the Installation Command
 
