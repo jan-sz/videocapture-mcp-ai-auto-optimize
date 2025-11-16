@@ -6,7 +6,7 @@
 
 Video Still Capture MCP is a Python implementation of the Model Context Protocol (MCP) that provides AI assistants with the ability to access and control webcams and video sources through OpenCV. This server exposes a set of tools that allow language models to capture images, manipulate camera settings, and manage video connections. There is no video capture.
 
-> **Origin:** [videocapture-mcp-ai-auto-optimize](https://github.com/jan-sz/videocapture-mcp-ai-auto-optimize) builds on the open-source [videocapture-mcp](https://github.com/13rac1/videocapture-mcp) created by @13rac1, adding deterministic connection IDs, camera enumeration, and an auto-optimization pipeline for exploring UVC/DirectShow controls.
+> **Origin:** This project builds on the open-source [videocapture-mcp](https://github.com/13rac1/videocapture-mcp) created by @13rac1, adding deterministic connection IDs, camera enumeration, and an auto-optimization pipeline for exploring UVC/DirectShow controls.
 
 ## Examples
 
