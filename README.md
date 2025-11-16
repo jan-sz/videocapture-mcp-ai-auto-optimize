@@ -159,7 +159,10 @@ open_camera(device_index: int = 0, name: Optional[str] = None) -> str
 
 - **device_index**: Camera index (0 is usually the default webcam)
 - **name**: Optional name to identify this camera connection
-- **Returns**: Connection ID for the opened camera
+- **Returns**: Connection ID for the opened camera. If no name is provided,
+  IDs are generated deterministically as `camera_<index>_<counter>` so every
+  tool call uses the same format and there is no ambiguity between creators
+  and consumers of connection IDs.
 
 ### `capture_frame`
 
@@ -208,6 +211,17 @@ close_connection(connection_id: str) -> bool
 - **connection_id**: ID of the connection to close
 - **Returns**: True if successful
 
+### `list_cameras`
+
+Probe available cameras by index.
+
+```python
+list_cameras(max_devices: int = 10) -> list
+```
+
+- **max_devices**: Highest index (exclusive) to check; indices start at 0
+- **Returns**: A list of discovered cameras with their index, backend name, and reported resolution
+
 ### `list_active_connections`
 
 List all active video connections.
@@ -217,6 +231,10 @@ list_active_connections() -> list
 ```
 
 - **Returns**: List of active connection IDs
+
+### Camera selection and identification
+
+All capture tools expose a `device_index` parameter (default `0`) so you can explicitly choose which connected camera to use. When you call `open_camera(device_index=1)` you receive a deterministic connection ID (for example, `camera_1_01`); pass that ID to `capture_frame`, `set_video_property`, and other operations to ensure commands target the intended device. The helper `quick_capture` also accepts `device_index`, opening the specified camera temporarily and cleaning it up automatically while reusing any existing connection for that index.
 
 ## Example Usage
 
