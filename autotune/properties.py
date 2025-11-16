@@ -27,6 +27,14 @@ class PropertyDefinition:
     read_only: bool = False
 
 
+# The discovery process still needs a *catalog* of candidate controls to try.
+# PROPERTY_SPECS provides that seed list with OpenCV constant names, sensible
+# fallback ranges, and auto-mode metadata when a paired toggle exists. During
+# runtime, discovery translates these specs into `PropertyDefinition` entries
+# and then probes each one on the connected device to learn the *actual* range,
+# writability, and default values. The fallbacks only kick in when a camera
+# refuses to report limits, ensuring we always have conservative bounds for the
+# sampler instead of guessing from scratch.
 PROPERTY_SPECS = (
     {
         "name": "exposure",
